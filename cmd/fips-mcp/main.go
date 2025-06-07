@@ -6,59 +6,71 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/copyleftdev/fips-mcp/internal/app"
 	"github.com/copyleftdev/fips-mcp/internal/config"
 	"github.com/copyleftdev/fips-mcp/pkg/version"
 )
 
+var (
+	// versionFlag determines if the version information should be printed
+	versionFlag = flag.Bool("version", false, "Print version information and exit")
+)
+
 func main() {
-	// Initialize configuration
+	// Create a context that cancels on interrupt signal
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := run(ctx); err != nil {
+		log.Fatalf("Error: %v", err)
+	}
+}
+
+// run is the main entry point for the application
+func run(ctx context.Context) error {
+	// Parse flags
+	flag.Parse()
+
+	// Print version and exit if requested
+	if *versionFlag {
+		fmt.Println(version.String())
+		return nil
+	}
+
+	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Print version information if requested
-	if cfg.ShowVersion {
-		fmt.Println(version.String())
-		return
-	}
-
-	// Create application instance
+	// Create and start the application
 	application, err := app.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize application: %v", err)
+		return fmt.Errorf("failed to create application: %w", err)
 	}
 
-	// Setup signal handling
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// Start the application
+	// Start the application in a goroutine
+	errCh := make(chan error, 1)
 	go func() {
-		if err := application.Start(ctx); err != nil {
-			log.Printf("Application error: %v", err)
-			cancel()
-		}
-	}()
+		errCh <- application.Start(ctx)
+	}() // Fixed missing parentheses here
 
-	// Wait for termination signal
-	sig := <-signalChan
-	log.Printf("Received signal %v, shutting down...", sig)
-
-	// Start graceful shutdown
-	if err := application.Shutdown(context.Background()); err != nil {
-		log.Printf("Error during shutdown: %v", err)
+	// Wait for either the application to finish or context cancellation
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		// Context was cancelled, shutdown the application
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return application.Shutdown(shutdownCtx)
 	}
-
-	log.Println("Shutdown complete")
 }

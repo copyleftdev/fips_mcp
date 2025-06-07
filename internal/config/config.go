@@ -5,8 +5,11 @@
 package config
 
 import (
-"flag"
-"os"
+	"flag"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
 )
 
 // Config holds all configuration for the application
@@ -82,7 +85,16 @@ func getEnvAsInt(key string, fallback int) int {
 
 func getEnvAsBool(key string, fallback bool) bool {
 	if value, exists := os.LookupEnv(key); exists {
-		return strings.ToLower(value) == "true" || value == "1"
+		// Check for true values
+		if strings.ToLower(value) == "true" || value == "1" {
+			return true
+		}
+		// Check for false values
+		if strings.ToLower(value) == "false" || value == "0" {
+			return false
+		}
+		// For any other value, return fallback
+		return fallback
 	}
 	return fallback
 }

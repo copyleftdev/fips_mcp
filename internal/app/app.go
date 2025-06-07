@@ -5,16 +5,13 @@
 package app
 
 import (
-"context"
-"fmt"
-"log"
-"net/http"
-"os"
-"os/signal"
-"syscall"
-"time"
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"time"
 
-"github.com/copyleftdev/fips-mcp/internal/config"
+	"github.com/copyleftdev/fips-mcp/internal/config"
 )
 
 // App represents the main application
@@ -25,62 +22,83 @@ type App struct {
 
 // New creates a new application instance
 func New(cfg *config.Config) (*App, error) {
-	app := &App{
+	if cfg == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
+
+	r := http.NewServeMux()
+	r.HandleFunc("/healthz", HealthCheckHandler)
+	r.HandleFunc("/readyz", ReadinessCheckHandler)
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Handler: r,
+	}
+
+	return &App{
 		config: cfg,
-	}
-
-	// Initialize HTTP server
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", app.healthHandler)
-	mux.HandleFunc("/ready", app.readyHandler)
-
-	app.server = &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
-		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  15 * time.Second,
-	}
-
-	return app, nil
+		server: srv,
+	}, nil
 }
 
 // Start starts the application
 func (a *App) Start(ctx context.Context) error {
 	log.Printf("Starting server on %s", a.server.Addr)
 
-	// Start server in a goroutine so it doesn't block
-go func() {
-if a.config.TLSEnabled {
-if err := a.server.ListenAndServeTLS(a.config.CertFile, a.config.KeyFile); err != nil && err != http.ErrServerClosed {
-log.Fatalf("Failed to start HTTPS server: %v", err)
-}
-} else {
-if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-log.Fatalf("Failed to start HTTP server: %v", err)
-}
-}
-}()
+	serverErr := make(chan error, 1)
+	go func() {
+		if a.config.TLSEnabled {
+			if err := a.server.ListenAndServeTLS(a.config.CertFile, a.config.KeyFile); err != nil && err != http.ErrServerClosed {
+				serverErr <- fmt.Errorf("HTTPS server error: %w", err)
+				return
+			}
+		} else {
+			if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				serverErr <- fmt.Errorf("HTTP server error: %w", err)
+				return
+			}
+		}
+		serverErr <- nil
+	}()
 
-return nil
+	// Wait for either server error or context cancellation
+	select {
+	case err := <-serverErr:
+		return err
+	case <-ctx.Done():
+		// Context was cancelled, shutdown the server
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return a.Shutdown(shutdownCtx)
+	}
 }
 
 // Shutdown gracefully shuts down the application
 func (a *App) Shutdown(ctx context.Context) error {
-log.Println("Shutting down server...")
-return a.server.Shutdown(ctx)
+	log.Println("Shutting down server...")
+	return a.server.Shutdown(ctx)
 }
 
-// healthHandler handles health check requests
-func (a *App) healthHandler(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.WriteHeader(http.StatusOK)
-w.Write([]byte(`{"status":"ok"}`))
+// HealthCheckHandler handles health check requests
+func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{"status":"ok"}`)
 }
 
-// readyHandler handles readiness check requests
-func (a *App) readyHandler(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.WriteHeader(http.StatusOK)
-w.Write([]byte(`{"ready":true}`))
+// ReadinessCheckHandler handles readiness check requests
+func ReadinessCheckHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{"status":"ready"}`)
 }
