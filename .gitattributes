@@ -1,0 +1,81 @@
+# Set default behavior to automatically normalize line endings
+* text=auto eol=lf
+
+# Force batch files to use CRLF line endings
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Force Unix line endings for shell scripts
+*.sh text eol=lf
+
+# Force binary format for binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.bz2 binary
+*.tar binary
+*.gz binary
+*.7z binary
+*.dmg binary
+*.pkg binary
+*.app binary
+*.p12 binary
+*.crt binary
+*.cer binary
+*.der binary
+*.pem binary
+*.key binary
+*.pfx binary
+*.snk binary
+
+# Explicitly declare text files you want to always be normalized and converted
+# to native line endings on checkout.
+*.go text
+*.md text
+*.yaml text
+*.yml text
+*.json text
+*.toml text
+*.mod text
+*.sum text
+*.html text
+*.css text
+*.js text
+*.ts text
+*.sql text
+*.sh text
+*.txt text
+*.xml text
+*.xsd text
+*.xslt text
+*.dtd text
+*.svg text
+*.tmpl text
+*.tpl text
+*.tmpl.html text
+*.gohtml text
+*.proto text
+*.pb.go text
+*.pb.gw.go text
+*.pb.validate.go text
+*.pb.gw.go text
+*.swagger.json text
+*.swagger.yaml text
+*.swagger.yml text
+*.mdx text
+*.graphql text
+*.graphqls text
+*.gql text
+*.graphqls.schema.json text
+*.graphqls.schema.json.tmpl text
+*.graphqls.schema.json.go text
+*.graphqls.schema.json.tmpl.go text
+*.graphqls.schema.json.gotmpl text
+*.graphqls.schema.json.tmpl.gotmpl text
+*.graphqls.schema.json.tmpl.go.tmpl text
+*.graphqls.schema.json.tmpl.gotmpl.tmpl text
