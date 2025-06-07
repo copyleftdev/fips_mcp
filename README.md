@@ -27,7 +27,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and setup inst
 ## Security
 
 - All contributions must follow our [Security Guidelines](SECURITY.md)
-- Report security issues to [security@example.com](mailto:security@example.com)
+- Report security issues to [dj@codetestcode.io](mailto:dj@codetestcode.io)
+- Maintained by [copyleftdev](https://github.com/copyleftdev)
 
 ## License
 
