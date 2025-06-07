@@ -1,0 +1,107 @@
+# Windsurf Development Rules for FIPS 140-3 MCP Server
+# ===============================================
+
+## Core Development Principles
+1. **TODO.md is the Source of Truth**
+   - Always reference the current TODO.md before starting any work
+   - Mark tasks as complete ONLY when they are fully implemented, linted, and tested
+   - Never remove or modify completed tasks - only mark them with [x]
+   - Update the TODO.md when new requirements or tasks are identified
+
+2. **Documentation First**
+   - Keep all documentation in sync with code changes
+   - Reference docs/spec.md for all implementation decisions
+   - Document all architectural decisions in docs/decisions/
+   - Maintain up-to-date API documentation
+
+3. **Security-First Development**
+   - All code must pass FIPS 140-3 compliance checks
+   - No cryptographic operations outside the approved FIPS module
+   - Security review required for all new features
+   - Regular security audits as specified in TODO.md
+
+## Development Workflow
+
+### Before Starting Work
+1. Check TODO.md for the highest priority task in the current phase
+2. Ensure you understand the relevant sections of docs/spec.md
+3. Verify no existing work conflicts with the planned changes
+
+### During Development
+1. **Code Quality**
+   - Follow Go best practices and effective Go guidelines
+   - Keep functions small and focused (max 50 lines)
+   - Write self-documenting code with clear, descriptive names
+   - Add comments for non-obvious logic and FIPS-specific considerations
+
+2. **Testing Requirements**
+   - Write tests before or alongside implementation (TDD encouraged)
+   - Achieve minimum 80% test coverage for all new code
+   - Include edge cases and security test cases
+   - All tests must pass before marking a task complete
+
+3. **Code Review**
+   - All code must be reviewed by at least one other developer
+   - Security-sensitive code requires two reviewers
+   - Address all review comments before marking a task complete
+
+### Completing Tasks
+1. **Verification Steps**
+   - [ ] All tests pass
+   - [ ] Code is properly linted
+   - [ ] Documentation is updated
+   - [ ] Security review completed if applicable
+   - [ ] Performance impact assessed
+
+2. **Marking Complete**
+   - Only mark tasks complete in TODO.md when all verification steps pass
+   - Add a brief commit message referencing the completed task
+   - Update any dependent tasks if necessary
+
+## Technical Requirements
+
+### FIPS 140-3 Compliance
+- All cryptographic operations MUST use Go's FIPS-validated module
+- No use of deprecated or non-FIPS approved algorithms
+- Regular verification of FIPS mode during operation
+- Secure key management as per FIPS guidelines
+
+### Error Handling
+- All errors must be properly handled and logged
+- No silent failures allowed
+- Security-related errors must trigger appropriate alerts
+
+### Performance
+- Regular performance benchmarking required
+- Monitor for memory leaks and performance regressions
+- Optimize critical paths while maintaining security
+
+## Maintenance Rules
+1. Dependency Management
+   - Regular security updates for all dependencies
+   - Document all third-party dependencies
+   - Verify FIPS compliance of all dependencies
+
+2. Documentation
+   - Keep all documentation in sync with code changes
+   - Document all security decisions and tradeoffs
+   - Maintain an up-to-date threat model
+
+3. Monitoring and Alerting
+   - Implement comprehensive logging
+   - Set up monitoring for security events
+   - Regular review of audit logs
+
+## Enforcement
+- These rules are mandatory for all development
+- Regular audits will verify compliance
+- Non-compliance must be addressed immediately
+- Exceptions require written approval with security justification
+
+## Review Cycle
+- These rules will be reviewed and updated:
+  - At the start of each development phase
+  - After any security incident
+  - When significant changes to the tech stack occur
+
+# End of Rules
