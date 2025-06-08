@@ -26,7 +26,10 @@ func TestSecureFileKeyStore(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a new key store
-	store, err := NewSecureFileKeyStore(storeDir, masterKey)
+	store, err := NewSecureFileKeyStore(Config{
+		BaseDir:  storeDir,
+		MasterKey: masterKey,
+	})
 	require.NoError(t, err)
 	defer store.Close()
 
@@ -88,7 +91,10 @@ func TestSecureFileKeyStore_Encryption(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a new key store
-	store, err := NewSecureFileKeyStore(tempDir, masterKey)
+	store, err := NewSecureFileKeyStore(Config{
+		BaseDir:  tempDir,
+		MasterKey: masterKey,
+	})
 	require.NoError(t, err)
 	defer store.Close()
 
@@ -114,7 +120,10 @@ func TestSecureFileKeyStore_Encryption(t *testing.T) {
 	_, err = rand.Read(wrongKey)
 	require.NoError(t, err)
 
-	badStore, err := NewSecureFileKeyStore(tempDir, wrongKey)
+	badStore, err := NewSecureFileKeyStore(Config{
+		BaseDir:  tempDir,
+		MasterKey: wrongKey,
+	})
 	require.NoError(t, err)
 	defer badStore.Close()
 
@@ -126,7 +135,9 @@ func TestNewSecureFileKeyStore_GenerateKey(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create a new key store without a master key
-	store, err := NewSecureFileKeyStore(tempDir, nil)
+	store, err := NewSecureFileKeyStore(Config{
+		BaseDir: tempDir,
+	})
 	require.NoError(t, err)
 	defer store.Close()
 
@@ -143,7 +154,10 @@ func TestNewSecureFileKeyStore_GenerateKey(t *testing.T) {
 	loadedKey, err := LoadMasterKey(keyPath)
 	require.NoError(t, err)
 
-	newStore, err := NewSecureFileKeyStore(tempDir, loadedKey)
+	newStore, err := NewSecureFileKeyStore(Config{
+		BaseDir:  tempDir,
+		MasterKey: loadedKey,
+	})
 	require.NoError(t, err)
 	defer newStore.Close()
 
@@ -155,7 +169,9 @@ func TestSecureFileKeyStore_ConcurrentAccess(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create a new key store
-	store, err := NewSecureFileKeyStore(tempDir, nil)
+	store, err := NewSecureFileKeyStore(Config{
+		BaseDir: tempDir,
+	})
 	require.NoError(t, err)
 	defer store.Close()
 

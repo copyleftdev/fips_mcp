@@ -21,26 +21,48 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/copyleftdev/fips-mcp/internal/audit"
 	"github.com/golang/glog"
 )
 
 // SecureFileKeyStore implements a secure file-based key store that encrypts keys at rest.
 type SecureFileKeyStore struct {
-	baseDir  string
-	key      []byte // Master encryption key
-	keys     map[string][]byte
-	keysLock sync.RWMutex
+	baseDir    string
+	key        []byte // Master encryption key
+	keys       map[string][]byte
+	keysLock   sync.RWMutex
+	auditLog   *audit.Logger
+	auditMutex sync.Mutex
+}
+
+// Config holds configuration for the secure file key store.
+type Config struct {
+	// BaseDir is the directory where keys will be stored.
+	BaseDir string
+
+	// MasterKey is the encryption key used to protect stored keys.
+	// If empty, a new random key will be generated.
+	MasterKey []byte
+
+	// AuditLog is an optional audit logger for tracking key operations.
+	// If nil, no audit logging will be performed.
+	AuditLog *audit.Logger
 }
 
 // NewSecureFileKeyStore creates a new secure file-based key store.
-// The masterKey is used to encrypt all stored keys. If masterKey is empty,
+// The config.MasterKey is used to encrypt all stored keys. If empty,
 // a new random key will be generated.
-func NewSecureFileKeyStore(baseDir string, masterKey []byte) (*SecureFileKeyStore, error) {
-	if err := os.MkdirAll(baseDir, 0700); err != nil {
+func NewSecureFileKeyStore(config Config) (*SecureFileKeyStore, error) {
+	if config.BaseDir == "" {
+		return nil, fmt.Errorf("base directory is required")
+	}
+
+	if err := os.MkdirAll(config.BaseDir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create key store directory: %w", err)
 	}
 
 	// If no master key provided, generate a new one
+	masterKey := config.MasterKey
 	if len(masterKey) == 0 {
 		masterKey = make([]byte, 32) // 256-bit key for AES-256
 		if _, err := io.ReadFull(rand.Reader, masterKey); err != nil {
@@ -49,9 +71,10 @@ func NewSecureFileKeyStore(baseDir string, masterKey []byte) (*SecureFileKeyStor
 	}
 
 	return &SecureFileKeyStore{
-		baseDir: baseDir,
-		key:     masterKey,
-		keys:    make(map[string][]byte),
+		baseDir:  config.BaseDir,
+		key:      masterKey,
+		keys:     make(map[string][]byte),
+		auditLog: config.AuditLog,
 	}, nil
 }
 
@@ -153,8 +176,18 @@ func (s *SecureFileKeyStore) StoreKey(id string, keyIface crypto.PrivateKey) err
 	// Ensure we're storing an RSA key
 	key, ok := keyIface.(*rsa.PrivateKey)
 	if !ok {
-		return fmt.Errorf("only RSA private keys are supported, got %T", keyIface)
+		err := fmt.Errorf("unsupported key type: %T", keyIface)
+		s.auditKeyOperation("store", id, "failure", map[string]string{
+			"error": err.Error(),
+		})
+		return err
 	}
+
+	// Log the key operation
+	metadata := map[string]string{
+		"key_bits": fmt.Sprintf("%d", key.Size()*8),
+	}
+	s.auditKeyOperation("store", id, "start", metadata)
 	s.keysLock.Lock()
 	defer s.keysLock.Unlock()
 
@@ -181,11 +214,19 @@ func (s *SecureFileKeyStore) StoreKey(id string, keyIface crypto.PrivateKey) err
 	s.keys[id] = encrypted
 
 	glog.V(2).Infof("Stored key %s at %s", id, path)
+
+	// Log successful storage
+	s.auditKeyOperation("store", id, "success", map[string]string{
+		"key_path": path,
+	})
+
 	return nil
 }
 
 // GetKey retrieves a private key from the key store.
 func (s *SecureFileKeyStore) GetKey(id string) (crypto.PrivateKey, error) {
+	// Log the key retrieval
+	s.auditKeyOperation("retrieve", id, "start", nil)
 	s.keysLock.RLock()
 	encrypted, inMemory := s.keys[id]
 	s.keysLock.RUnlock()
@@ -212,8 +253,15 @@ func (s *SecureFileKeyStore) GetKey(id string) (crypto.PrivateKey, error) {
 	// Decrypt the key
 	key, err := s.decryptKey(encrypted)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt key %s: %w", id, err)
+		err = fmt.Errorf("failed to decrypt key %s: %w", id, err)
+		s.auditKeyOperation("retrieve", id, "failure", map[string]string{
+			"error": err.Error(),
+		})
+		return nil, err
 	}
+
+	// Log successful retrieval
+	s.auditKeyOperation("retrieve", id, "success", nil)
 
 	return key, nil
 }
@@ -224,13 +272,73 @@ func (s *SecureFileKeyStore) DeleteKey(id string) error {
 	defer s.keysLock.Unlock()
 
 	path := s.keyPath(id)
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to delete key file: %w", err)
+
+	// Log the deletion attempt
+	s.auditKeyOperation("delete", id, "start", nil)
+
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			// Key doesn't exist, but we'll still log the operation
+			s.auditKeyOperation("delete", id, "not_found", nil)
+			return nil
+		}
+		err = fmt.Errorf("failed to delete key file: %w", err)
+		s.auditKeyOperation("delete", id, "failure", map[string]string{
+			"error": err.Error(),
+		})
+		return err
 	}
 
 	delete(s.keys, id)
 	glog.V(2).Infof("Deleted key %s", id)
+
+	// Log successful deletion
+	s.auditKeyOperation("delete", id, "success", nil)
+
 	return nil
+}
+
+// auditKeyOperation logs a key operation to the audit log if configured.
+func (s *SecureFileKeyStore) auditKeyOperation(action, keyID, status string, metadata map[string]string) {
+	if s.auditLog == nil {
+		return
+	}
+
+	s.auditMutex.Lock()
+	defer s.auditMutex.Unlock()
+
+	event := audit.Event{
+		EventType: getEventTypeForAction(action),
+		Action:    action,
+		Status:    status,
+		Resource:  fmt.Sprintf("key:%s", keyID),
+		Metadata:  metadata,
+	}
+
+	// Add error to metadata if present
+	if status == "failure" && metadata != nil {
+		if errMsg, ok := metadata["error"]; ok {
+			event.Metadata["error"] = errMsg
+		}
+	}
+
+	if err := s.auditLog.Log(event); err != nil {
+		glog.Warningf("Failed to log audit event: %v", err)
+	}
+}
+
+// getEventTypeForAction maps actions to audit event types.
+func getEventTypeForAction(action string) audit.EventType {
+	switch action {
+	case "store":
+		return audit.EventKeyStore
+	case "retrieve":
+		return audit.EventKeyRetrieve
+	case "delete":
+		return audit.EventKeyDelete
+	default:
+		return audit.EventType(fmt.Sprintf("key_%s", action))
+	}
 }
 
 // ListKeys returns a list of all key IDs in the key store.
