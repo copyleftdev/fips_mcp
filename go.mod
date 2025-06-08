@@ -7,6 +7,7 @@ require github.com/stretchr/testify v1.10.0
 require (
 	github.com/avast/retry-go v3.0.0+incompatible // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/golang/glog v1.2.5 // indirect
 	github.com/jessevdk/go-flags v1.6.1 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/pkg/errors v0.9.1 // indirect
